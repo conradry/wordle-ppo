@@ -87,7 +87,7 @@ class WordleEnv:
         self.guessed_words.append(guess)
         self.letter_colors.append([self.color_lookup[i] for i in score])
         
-        reward = 1 if all([s == 3 for s in score]) else 0 
+        reward = 1 if all([s == 3 for s in score]) else -1
         
         # update the state
         done = False
@@ -142,7 +142,7 @@ class WordleEnv:
             label.draw()
 
         self.window.flip()
-        time.sleep(0.1)
+        time.sleep(1)
 
         if return_image:
             buffer = pyglet.image.get_buffer_manager().get_color_buffer()
