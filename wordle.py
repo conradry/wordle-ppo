@@ -75,13 +75,10 @@ class WordleEnv:
             2: (0, 0, 255, 255),
             3: (0, 255, 0, 255),
         }
-        display = get_display(None)
-        self.screen_width = 64
-        self.screen_height = 96
-        self.window = get_window(self.screen_width, self.screen_height, display)
         
         self.actions = 6 * [0] # 6 words
         self.scores = 6  * [5 * [0]] # 6 words * 5 letters
+        self.window = None
 
     def step(self, action):
         # get the word from the action
@@ -107,7 +104,8 @@ class WordleEnv:
 
     def reset(self, seed: Optional[int] = None):
         # set a random word
-        self.window.clear()
+        if self.window is not None:
+            self.window.clear()
         self.guessed_words = []
         self.letter_colors = []
         self.actions = 6 * [0] # 6 words
@@ -118,6 +116,12 @@ class WordleEnv:
         return state
 
     def render(self, return_image=False):
+        if self.window is None:
+            display = get_display(None)
+            self.screen_width = 64
+            self.screen_height = 96
+            self.window = get_window(self.screen_width, self.screen_height, display)
+
         labels = []
         for i,word in enumerate(self.guessed_words):
             y = (6 - i) * (self.screen_height // 6) - 6

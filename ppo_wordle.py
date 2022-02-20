@@ -146,7 +146,7 @@ if __name__ == '__main__':
         print('Running epoch', epoch)
         ep_ret = 0
         for t in range(steps):
-            if epoch >= epochs - 1:
+            if epoch >= 1:
                 env.render()
             a, v, logp = ac.step(torch.as_tensor(o[None], dtype=torch.long))
 
