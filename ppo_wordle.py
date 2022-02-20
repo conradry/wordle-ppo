@@ -120,6 +120,7 @@ if __name__ == '__main__':
     act_dim = env.n_actions
     hidden_dim = 32
     emb_dim = 32
+    save_freq = 100
 
     obs_emb_dim = 6 * emb_dim + 6 * 5 * 3
 
@@ -146,8 +147,6 @@ if __name__ == '__main__':
         print('Running epoch', epoch)
         ep_ret = 0
         for t in range(steps):
-            if epoch >= 1:
-                env.render()
             a, v, logp = ac.step(torch.as_tensor(o[None], dtype=torch.long))
 
             next_o, r, d, _ = env.step(a[0])
@@ -209,5 +208,6 @@ if __name__ == '__main__':
         print('Entropy', ent)
         print('Policy loss', loss_pi.item())
         print('Value loss', loss_v.item())
-    
-    torch.save(ac.state_dict(), 'wordle_agent.pth')
+
+        if (epoch + 1) % save_freq == 0:
+            torch.save(ac.state_dict(), 'wordle_agent.pth')
