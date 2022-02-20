@@ -119,6 +119,7 @@ if __name__ == '__main__':
     act_dim = env.n_actions
     hidden_dim = 32
     emb_dim = 32
+    save_freq = 100
 
     obs_emb_dim = 6 * emb_dim + 6 * 5 * 3
 
@@ -221,6 +222,7 @@ if __name__ == '__main__':
         print('Entropy', ent)
         print('Policy loss', loss_pi.item())
         print('Value loss', loss_v.item())
+
         print('Num games', n_games)
         print('Num correct', ep_correct)
         for k,v in {k: right_in[k] for k in sorted(right_in)}.items():
