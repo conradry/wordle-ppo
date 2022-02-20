@@ -126,7 +126,7 @@ if __name__ == '__main__':
     gamma = 0.99
     lamb = 0.95
     steps = 3000
-    epochs = 50
+    epochs = 30000
     clip_ratio = 0.2
     pi_lr = 3e-4
     vf_lr = 1e-3
@@ -209,3 +209,5 @@ if __name__ == '__main__':
         print('Entropy', ent)
         print('Policy loss', loss_pi.item())
         print('Value loss', loss_v.item())
+    
+    torch.save(ac.state_dict(), 'wordle_agent.pth')
