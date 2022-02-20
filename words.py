@@ -5757,3 +5757,5 @@ word_list = [
     'biffy',
     'pupal'
 ]
+
+word_list = word_list[:10]

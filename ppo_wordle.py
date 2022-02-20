@@ -1,4 +1,3 @@
-import gym
 import math
 import numpy as np
 import torch
@@ -127,7 +126,7 @@ if __name__ == '__main__':
     gamma = 0.99
     lamb = 0.95
     steps = 3000
-    epochs = 30000
+    epochs = 10
     clip_ratio = 0.2
     pi_lr = 3e-4
     vf_lr = 1e-3
@@ -146,6 +145,9 @@ if __name__ == '__main__':
     for epoch in range(epochs):
         print('Running epoch', epoch)
         ep_ret = 0
+        ep_correct = 0
+        n_games = 0
+        right_in = {}
         for t in range(steps):
             a, v, logp = ac.step(torch.as_tensor(o[None], dtype=torch.long))
 
@@ -162,12 +164,24 @@ if __name__ == '__main__':
             terminal = d
             epoch_ended = t == steps - 1
 
+            if epoch >= epochs - 1:
+                env.render()
+
             if terminal or epoch_ended:
                 # if trajectory didn't reach terminal state, bootstrap value target
                 if epoch_ended:
                     _, v, _ = ac.step(torch.as_tensor(o[None], dtype=torch.long))
                     print('Total reward', ep_ret)
                 else:
+                    if terminal and r == 1:
+                        ep_correct += 1
+                        n_guesses = len(env.guessed_words)
+                        if n_guesses not in right_in:
+                            right_in[n_guesses] = 1
+                        else:
+                            right_in[n_guesses] += 1
+
+                    n_games += 1
                     v = 0
 
                 buf.finish_path(v)
@@ -209,5 +223,9 @@ if __name__ == '__main__':
         print('Policy loss', loss_pi.item())
         print('Value loss', loss_v.item())
 
-        if (epoch + 1) % save_freq == 0:
-            torch.save(ac.state_dict(), 'wordle_agent.pth')
+        print('Num games', n_games)
+        print('Num correct', ep_correct)
+        for k,v in {k: right_in[k] for k in sorted(right_in)}.items():
+            print(f'Guessed {v} in {k}') 
+    
+    torch.save(ac.state_dict(), 'wordle_agent.pth')
