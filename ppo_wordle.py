@@ -108,7 +108,7 @@ class MLPActorCritic(nn.Module):
             logp_a = self.pi._log_prob_from_distribution(pi, a)
             v = self.v.run_net(obs)
         return a.numpy(), v.numpy(), logp_a.numpy()
-
+    
     def act(self, obs):
         return self.step(obs)[0]
 
@@ -126,7 +126,7 @@ if __name__ == '__main__':
     gamma = 0.99
     lamb = 0.95
     steps = 3000
-    epochs = 10
+    epochs = 30
     clip_ratio = 0.2
     pi_lr = 3e-4
     vf_lr = 1e-3
@@ -164,16 +164,13 @@ if __name__ == '__main__':
             terminal = d
             epoch_ended = t == steps - 1
 
-            if epoch >= epochs - 1:
-                env.render()
-
             if terminal or epoch_ended:
                 # if trajectory didn't reach terminal state, bootstrap value target
                 if epoch_ended:
                     _, v, _ = ac.step(torch.as_tensor(o[None], dtype=torch.long))
                     print('Total reward', ep_ret)
                 else:
-                    if terminal and r == 1:
+                    if terminal and r > 1:
                         ep_correct += 1
                         n_guesses = len(env.guessed_words)
                         if n_guesses not in right_in:
@@ -227,5 +224,27 @@ if __name__ == '__main__':
         print('Num correct', ep_correct)
         for k,v in {k: right_in[k] for k in sorted(right_in)}.items():
             print(f'Guessed {v} in {k}') 
-    
-    torch.save(ac.state_dict(), 'wordle_agent.pth')
+
+        print('\n')
+
+        if (epoch + 1) % 100 == 0:
+            torch.save(ac.state_dict(), f'ac_epoch{epoch}.pth')
+
+
+    for i in range(100):
+        # play some games and show results
+        o = env.reset()
+        for _ in range(6):
+            with torch.no_grad():
+                pi, _ = ac.pi(ac.embed_obs(torch.as_tensor(o[None], dtype=torch.long)))
+            
+            a = pi.probs.argmax(1).item()
+            p = pi.probs[..., a]
+            next_o, r, d, _ = env.step(a)
+            env.render()
+            print('Game', i, 'Guessed word', env.guessed_words[-1], 'with prob', p.item())
+
+            o = next_o
+            if d:
+                print('\n')
+                break

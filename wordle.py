@@ -56,7 +56,7 @@ def make_observation(target, guess):
 
     # fill in the wrong position hits
     for i, (cg,tg) in enumerate(zip(guess, target)):
-        if cg in letter_counts and observation[i] == 0:
+        if cg in letter_counts and observation[i] == 1:
             if guess_letters_used[cg] < letter_counts[cg]:
                 observation[i] = 2
                 guess_letters_used[cg] += 1
@@ -87,13 +87,23 @@ class WordleEnv:
         self.guessed_words.append(guess)
         self.letter_colors.append([self.color_lookup[i] for i in score])
         
-        reward = 1 if all([s == 3 for s in score]) else -1
-        
-        # update the state
+        reward = 0
+        for s in score:
+            if s == 3:
+                reward += 0.2
+            elif s == 2:
+                reward += 0.1
+            else:
+                reward -= 0.1
+
         done = False
-        if len(self.guessed_words) == 6 or reward == 1:
+        if all([s == 3 for s in score]):
+            done = True
+            reward += 10
+        elif len(self.guessed_words) == 6:
             done = True
         
+        #print(guess, self.secret_word, score, reward)
         #state = self.render(return_image=True)        
         n_guesses = len(self.guessed_words)
         self.actions[n_guesses - 1] = action
