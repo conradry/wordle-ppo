@@ -1,2 +1,2 @@
-# minRL
-Minimal implementations of RL algorithms
+# Wordle PPO
+Wordle environment with PPO reinforcement learning.
