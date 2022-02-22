@@ -1,3 +1,4 @@
+from tkinter import W
 import pyglet
 import time
 import math
@@ -7,6 +8,9 @@ from typing import Optional
 import numpy as np
 from collections import Counter
 from words import word_list
+import string
+
+LETTERS = list(string.ascii_lowercase)
 
 def get_display(spec):
     """Convert a display specification (such as :0) into an actual Display
@@ -56,7 +60,7 @@ def make_observation(target, guess):
 
     # fill in the wrong position hits
     for i, (cg,tg) in enumerate(zip(guess, target)):
-        if cg in letter_counts and observation[i] == 1:
+        if cg in letter_counts and observation[i] == 0:
             if guess_letters_used[cg] < letter_counts[cg]:
                 observation[i] = 2
                 guess_letters_used[cg] += 1
@@ -102,13 +106,18 @@ class WordleEnv:
             reward += 10
         elif len(self.guessed_words) == 6:
             done = True
+
+        # update the state
+        done = False
+        if len(self.guessed_words) == 6 or reward == 1:
+            done = True
         
-        #print(guess, self.secret_word, score, reward)
         #state = self.render(return_image=True)        
         n_guesses = len(self.guessed_words)
         self.actions[n_guesses - 1] = action
         self.scores[n_guesses - 1] = score
-        state = np.concatenate([self.actions, *self.scores], axis=0) 
+        self.letters[n_guesses - 1] = [LETTERS.index(c) + 1 for c in guess]
+        state = np.concatenate([*self.letters, *self.scores], axis=0) 
 
         return state, reward, done, {}
 
@@ -120,7 +129,8 @@ class WordleEnv:
         self.letter_colors = []
         self.actions = 6 * [0] # 6 words
         self.scores = 6  * [5 * [0]] # 6 words * 5 letters
-        state = np.concatenate([self.actions, *self.scores], axis=0) 
+        self.letters = 6 * [5 * [0]]
+        state = np.concatenate([*self.letters, *self.scores], axis=0) 
 
         self.secret_word = random.choice(word_list)
         return state
