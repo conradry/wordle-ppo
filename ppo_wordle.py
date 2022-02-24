@@ -126,7 +126,7 @@ if __name__ == '__main__':
     gamma = 0.99
     lamb = 0.95
     steps = 3000
-    epochs = 10
+    epochs = 100
     clip_ratio = 0.2
     pi_lr = 3e-4
     vf_lr = 1e-3
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         for t in range(steps):
             a, v, logp = ac.step(torch.as_tensor(o[None], dtype=torch.long))
 
-            next_o, r, d, _ = env.step(a[0])
+            next_o, r, d, step_info = env.step(a[0])
             ep_ret += r
             ep_len += 1
 
@@ -173,9 +173,9 @@ if __name__ == '__main__':
                     _, v, _ = ac.step(torch.as_tensor(o[None], dtype=torch.long))
                     print('Total reward', ep_ret)
                 else:
-                    if terminal and r == 1:
+                    n_guesses = len(env.guessed_words)
+                    if terminal and  step_info['correct']:
                         ep_correct += 1
-                        n_guesses = len(env.guessed_words)
                         if n_guesses not in right_in:
                             right_in[n_guesses] = 1
                         else:
@@ -228,5 +228,24 @@ if __name__ == '__main__':
         for k,v in {k: right_in[k] for k in sorted(right_in)}.items():
             print(f'Guessed {v} in {k}') 
 
-        if (epoch + 1) % 100 == 0: 
+        if (epoch + 1) % 500 == 0: 
             torch.save(ac.state_dict(), 'wordle_agent.pth')
+
+
+    for i in range(100):
+        # play some games and show results
+        o = env.reset()
+        for _ in range(6):
+            with torch.no_grad():
+                pi, _ = ac.pi(ac.embed_obs(torch.as_tensor(o[None], dtype=torch.long)))
+            
+            a = pi.probs.argmax(1).item()
+            p = pi.probs[..., a]
+            next_o, r, d, _ = env.step(a)
+            env.render()
+            print('Game', i, 'Guessed word', env.guessed_words[-1], 'with prob', p.item())
+
+            o = next_o
+            if d:
+                print('\n')
+                break

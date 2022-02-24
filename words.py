@@ -5758,4 +5758,4 @@ word_list = [
     'pupal'
 ]
 
-word_list = word_list[:100]
+word_list = word_list[-50:]

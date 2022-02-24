@@ -60,7 +60,7 @@ def make_observation(target, guess):
 
     # fill in the wrong position hits
     for i, (cg,tg) in enumerate(zip(guess, target)):
-        if cg in letter_counts and observation[i] == 0:
+        if cg in letter_counts and observation[i] == 1:
             if guess_letters_used[cg] < letter_counts[cg]:
                 observation[i] = 2
                 guess_letters_used[cg] += 1
@@ -83,35 +83,38 @@ class WordleEnv:
         self.actions = 6 * [0] # 6 words
         self.scores = 6  * [5 * [0]] # 6 words * 5 letters
         self.window = None
+        self.rewards = {1: 0, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1}
 
     def step(self, action):
         # get the word from the action
         guess = word_list[action]
         score = make_observation(self.secret_word, guess)
+        already_guessed = guess in self.guessed_words
         self.guessed_words.append(guess)
         self.letter_colors.append([self.color_lookup[i] for i in score])
         
         reward = 0
         for s in score:
             if s == 3:
-                reward += 0.2
+                reward += 0.025
             elif s == 2:
-                reward += 0.1
-            else:
-                reward -= 0.1
+                reward += 0.01
+
+        # give a negative reward for
+        # guessing a word that is in the list
+        if already_guessed:
+            reward = -1
 
         done = False
+        correct = False
         if all([s == 3 for s in score]):
             done = True
-            reward += 10
+            # reward by how quickly it gets the correct word
+            correct = True
+            reward = self.rewards[len(self.guessed_words)]
         elif len(self.guessed_words) == 6:
             done = True
 
-        # update the state
-        done = False
-        if len(self.guessed_words) == 6 or reward == 1:
-            done = True
-        
         #state = self.render(return_image=True)        
         n_guesses = len(self.guessed_words)
         self.actions[n_guesses - 1] = action
@@ -119,7 +122,7 @@ class WordleEnv:
         self.letters[n_guesses - 1] = [LETTERS.index(c) + 1 for c in guess]
         state = np.concatenate([*self.letters, *self.scores], axis=0) 
 
-        return state, reward, done, {}
+        return state, reward, done, {'correct': correct}
 
     def reset(self, seed: Optional[int] = None):
         # set a random word
