@@ -120,7 +120,7 @@ class WordleEnv:
         self.actions[n_guesses - 1] = action
         self.scores[n_guesses - 1] = score
         self.letters[n_guesses - 1] = [LETTERS.index(c) + 1 for c in guess]
-        state = np.concatenate([*self.letters, *self.scores], axis=0) 
+        state = np.stack([self.letters, self.scores], axis=-1).reshape(-1, 2) 
 
         return state, reward, done, {'correct': correct}
 
@@ -133,7 +133,7 @@ class WordleEnv:
         self.actions = 6 * [0] # 6 words
         self.scores = 6  * [5 * [0]] # 6 words * 5 letters
         self.letters = 6 * [5 * [0]]
-        state = np.concatenate([*self.letters, *self.scores], axis=0) 
+        state = np.stack([self.letters, self.scores], axis=-1).reshape(-1, 2) 
 
         self.secret_word = random.choice(word_list)
         return state

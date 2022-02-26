@@ -12,7 +12,7 @@ def discount_cumsum(x, discount):
 
 class PPOBuffer:
     def __init__(self, obs_dim, size, gamma=0.99, lamb=0.95):
-        self.obs_buf = np.zeros((size, obs_dim), dtype=np.float32)
+        self.obs_buf = np.zeros((size, *obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(size, dtype=np.float32)
         self.adv_buf = np.zeros(size, dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
@@ -83,6 +83,67 @@ class MLP(nn.Module):
 
         return pi, logp_a
 
+class Transformer(nn.Module):
+    def __init__(self, obs_dim, emb_dim, hidden_dim, action_dim):
+        super(Transformer, self).__init__()
+        # create query key and value layers
+        self.embed = nn.Embedding(obs_dim, emb_dim)
+        self.score_emb = nn.Embedding(4, 4)
+        self.pos_emb = nn.Parameter(torch.zeros(1, 6, emb_dim + 4))
+        self.out_emb = nn.Parameter(torch.zeros(1, 1, emb_dim + 4))
+
+        self.key = nn.Linear(emb_dim + 4, hidden_dim)
+        self.query = nn.Linear(emb_dim + 4, hidden_dim)
+        self.value = nn.Linear(emb_dim + 4, hidden_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, action_dim)
+        )
+
+        self.n_head = 1
+        self.hidden_dim = hidden_dim
+
+    def _distribution(self, state):
+        logits = self.run_net(state)
+        return Categorical(logits=logits)
+
+    def _log_prob_from_distribution(self, dist, action):
+        return dist.log_prob(action)
+
+    def run_net(self, obs):
+        x, scores = obs[..., 0], obs[..., 1]
+        # get embedded and position encoded input
+        x = self.embed(x)
+        scores = self.score_emb(scores)
+        x = torch.cat([x, scores], dim=-1) # (batch, 30, emb_dim + 4)
+        x = x + self.pos_emb.repeat(1, 5, 1) # (batch, 30, emb_dim + 4) 
+        x = torch.cat([x, self.out_emb.expand(x.size(0), 1, -1)], dim=1) # (batch, 31, emb_dim + 4)
+
+        B, T, _ = x.size()
+        C = self.hidden_dim
+        
+        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+
+        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
+        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        att = F.softmax(att, dim=-1)
+        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+        
+        return self.mlp(y[:, -1]) # (B, hs) -> (B, ac)
+
+    def forward(self, obs, act=None):
+        pi = self._distribution(obs)
+        logp_a = None
+        if act is not None:
+            logp_a = self._log_prob_from_distribution(pi, act)
+
+        return pi, logp_a
+
 class MLPActorCritic(nn.Module):
     def __init__(self, obs_dim, hidden_dim, act_dim, emb_dim):
         super().__init__()
@@ -112,19 +173,36 @@ class MLPActorCritic(nn.Module):
     def act(self, obs):
         return self.step(obs)[0]
 
+class TransformerActorCritic(nn.Module):
+    def __init__(self, obs_dim, emb_dim, hidden_dim, act_dim):
+        super().__init__()
+        self.pi = Transformer(obs_dim, emb_dim, hidden_dim, act_dim)
+        self.v  = Transformer(obs_dim, emb_dim, hidden_dim, 1)
+
+    def step(self, obs):
+        with torch.no_grad():
+            pi = self.pi._distribution(obs)
+            a = pi.sample()
+            logp_a = self.pi._log_prob_from_distribution(pi, a)
+            v = self.v.run_net(obs)
+        return a.numpy(), v.numpy(), logp_a.numpy()
+
+    def act(self, obs):
+        return self.step(obs)[0]
+
 if __name__ == '__main__':
 
     env = WordleEnv()
-    obs_dim = 6 * 5 + 6 * 5
+    obs_dim = (30, 2)
+    n_letters = 27
     act_dim = env.n_actions
     hidden_dim = 32
     emb_dim = 16
     save_freq = 100
 
-    obs_emb_dim = 6 * 5 * emb_dim + 6 * 5 * 3
-
     gamma = 0.99
     lamb = 0.95
+    ent_weight = 0.01
     steps = 3000
     epochs = 100
     clip_ratio = 0.2
@@ -132,7 +210,7 @@ if __name__ == '__main__':
     vf_lr = 1e-3
     target_kl = 0.01
 
-    ac = MLPActorCritic(obs_emb_dim, hidden_dim, act_dim, emb_dim)
+    ac = TransformerActorCritic(n_letters, emb_dim, hidden_dim, act_dim)
     buf = PPOBuffer(obs_dim, size=steps, gamma=gamma, lamb=lamb)
     
     # Set up optimizers for policy and value function
@@ -196,15 +274,16 @@ if __name__ == '__main__':
         for i in range(80):
             pi_optimizer.zero_grad()
 
-            # Policy loss
-            pi, logp = ac.pi(ac.embed_obs(obs), act)
+            # Useful extra info
+            pi, logp = ac.pi(obs, act)
+            ent = pi.entropy()
             ratio = torch.exp(logp - logp_old)
             clip_adv = torch.clamp(ratio, 1-clip_ratio, 1+clip_ratio) * adv
-            loss_pi = -(torch.min(ratio * adv, clip_adv)).mean()
+            loss_pi = -(torch.min(ratio * adv, clip_adv) + ent_weight * ent).mean()
 
             # Useful extra info
+            ent = ent.mean().item()
             approx_kl = (logp_old - logp).mean().item()
-            ent = pi.entropy().mean().item()
             if approx_kl > 1.5 * target_kl:
                 break
 
@@ -214,7 +293,7 @@ if __name__ == '__main__':
         # Value function learning
         for i in range(80):
             vf_optimizer.zero_grad()
-            loss_v = ((ac.v.run_net(ac.embed_obs(obs)) - ret)**2).mean()
+            loss_v = ((ac.v.run_net(obs) - ret)**2).mean()
             loss_v.backward()
             vf_optimizer.step()
 
